@@ -4,6 +4,15 @@
 
 The project follows a microservices architecture in which business capabilities are separated into independently deployable services.
 
+## Implementation Status
+
+- **Discovery Server:** Implemented with Netflix Eureka. Runs on port `8761` and is configured for standalone operation.
+- **API Gateway:** Planned.
+- **Product Service:** Planned.
+- **Order Service:** Planned.
+- **Service-to-service communication:** OpenFeign and Kafka are planned; they will be introduced when the relevant services are implemented.
+- **Persistence and infrastructure:** Separate PostgreSQL databases and Docker Compose are planned.
+
 ## Services
 
 ### Discovery Server
