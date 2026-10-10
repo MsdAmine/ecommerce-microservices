@@ -33,7 +33,7 @@ Under development. Components are implemented incrementally and verified before 
 ### Implemented Components
 
 - [x] Discovery Server — Netflix Eureka service registry
-- [ ] API Gateway
+- [x] API Gateway — Spring Cloud Gateway with Eureka service discovery
 - [ ] Product Service
 - [ ] Order Service
 - [ ] Database integration
@@ -59,6 +59,22 @@ cd discovery-server
 The Eureka dashboard should be available at:
 
 http://localhost:8761
+
+To stop the application, press `Ctrl+C` in the terminal running it.
+
+### Running the API Gateway
+
+Start the Discovery Server first, then open a second terminal and run:
+
+```powershell
+cd api-gateway
+.\mvnw.cmd clean verify
+.\mvnw.cmd spring-boot:run
+```
+
+The API Gateway listens on port `8080` and registers itself with the Eureka Discovery Server at `http://localhost:8761/eureka/`.
+
+The Gateway's discovery locator is enabled, allowing it to create routes for services registered with Eureka. Requests can be routed to backend services once those services are implemented and registered.
 
 To stop the application, press `Ctrl+C` in the terminal running it.
 
