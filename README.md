@@ -28,6 +28,44 @@ The system will consist of:
 
 ## Project Status
 
-🚧 Under development
+Under development. Components are implemented incrementally and verified before integration.
 
-The project is being built incrementally to understand each architectural component rather than assembling the system through generated code.
+### Implemented Components
+
+- [x] Discovery Server — Netflix Eureka service registry
+- [ ] API Gateway
+- [ ] Product Service
+- [ ] Order Service
+- [ ] Database integration
+- [ ] Event-driven communication with Kafka
+- [ ] Docker Compose orchestration
+
+### Running the Discovery Server
+
+**Prerequisites**
+- JDK 21
+- Git
+
+Maven is provided through the Maven Wrapper, so a separate Maven installation is not required.
+
+From the repository root, run:
+
+```powershell
+cd discovery-server
+.\mvnw.cmd clean verify
+.\mvnw.cmd spring-boot:run
+```
+
+The Eureka dashboard should be available at:
+
+http://localhost:8761
+
+To stop the application, press `Ctrl+C` in the terminal running it.
+
+### Configuration
+
+The Discovery Server uses port `8761`. It is configured not to register itself as a Eureka client or fetch a registry from another server.
+
+### Development Approach
+
+This project is built incrementally to develop a practical understanding of microservices architecture, service discovery, synchronous and asynchronous communication, testing, and deployment.
