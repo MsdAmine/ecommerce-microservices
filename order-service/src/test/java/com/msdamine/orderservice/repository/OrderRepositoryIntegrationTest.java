@@ -10,8 +10,9 @@ import jakarta.persistence.EntityManager;
 
 import java.math.BigDecimal;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import com.msdamine.orderservice.entity.OrderItem;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @Transactional
@@ -45,6 +46,39 @@ class OrderRepositoryIntegrationTest {
         assertEquals(OrderStatus.PENDING, foundOrder.getStatus());
         assertEquals(0, new BigDecimal("299.99").compareTo(foundOrder.getTotalAmount()));
         assertNotNull(foundOrder.getCreatedAt());
+    }
+
+    @Test
+    void shouldSaveOrderWithItems() {
+
+        // Arrange
+        Order order = new Order(15L, new BigDecimal("449.97"));
+
+        OrderItem item1 = new OrderItem(
+                101L, 2, new BigDecimal("199.99")
+        );
+
+        OrderItem item2 = new OrderItem(
+                205L, 1, new BigDecimal("49.99")
+        );
+
+        order.addItem(item1);
+        order.addItem(item2);
+
+        // Act
+        Order savedOrder = orderRepository.saveAndFlush(order);
+        Long orderId = savedOrder.getId();
+
+        entityManager.clear();
+
+        Order foundOrder = orderRepository.findById(orderId)
+                .orElseThrow();
+
+        // Assert
+        assertEquals(2, foundOrder.getItems().size());
+
+        assertTrue(foundOrder.getItems().stream()
+                .allMatch(item -> item.getOrder().getId().equals(orderId)));
     }
 
 }
