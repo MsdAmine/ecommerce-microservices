@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.EntityManager;
-
+import com.msdamine.orderservice.service.OrderService;
 import java.math.BigDecimal;
 
 import com.msdamine.orderservice.entity.OrderItem;
@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 @Transactional
 class OrderRepositoryIntegrationTest {
+    @Autowired
+    private OrderService orderService;
 
     @Autowired
     private OrderRepository orderRepository;
@@ -79,6 +81,40 @@ class OrderRepositoryIntegrationTest {
 
         assertTrue(foundOrder.getItems().stream()
                 .allMatch(item -> item.getOrder().getId().equals(orderId)));
+    }
+    @Test
+    void shouldPersistOrderStatusChangeThroughDirtyChecking() {
+
+        // Arrange: create an order in the database
+        Order order = new Order(
+                15L,
+                new BigDecimal("199.99")
+        );
+
+        Order savedOrder = orderRepository.saveAndFlush(order);
+        Long orderId = savedOrder.getId();
+
+        // Clear the persistence context
+        entityManager.clear();
+
+        // Act: update through the service
+        orderService.updateOrderStatus(
+                orderId,
+                OrderStatus.CONFIRMED
+        );
+
+        // Force pending changes to the database
+        entityManager.flush();
+        entityManager.clear();
+
+        // Assert: reload the order from the database
+        Order updatedOrder = orderRepository.findById(orderId)
+                .orElseThrow();
+
+        assertEquals(
+                OrderStatus.CONFIRMED,
+                updatedOrder.getStatus()
+        );
     }
 
 }

@@ -7,19 +7,27 @@ import com.msdamine.orderservice.dto.CreateOrderRequest;
 import com.msdamine.orderservice.entity.Order;
 import com.msdamine.orderservice.entity.OrderItem;
 import org.springframework.transaction.annotation.Transactional;
+import com.msdamine.orderservice.mapper.OrderMapper;
+import com.msdamine.orderservice.dto.OrderResponse;
+import com.msdamine.orderservice.exception.OrderNotFoundException;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.util.List;import com.msdamine.orderservice.enums.OrderStatus;
+import com.msdamine.orderservice.exception.InvalidOrderStatusException;
 
 @Service
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final OrderMapper orderMapper;
 
-    public OrderService(OrderRepository orderRepository) {
+    public OrderService(
+            OrderRepository orderRepository,
+            OrderMapper orderMapper
+    ) {
         this.orderRepository = orderRepository;
+        this.orderMapper = orderMapper;
     }
-
     public BigDecimal calculateTotal(List<OrderItemRequest> items) {
 
         BigDecimal total = BigDecimal.ZERO;
@@ -36,7 +44,7 @@ public class OrderService {
     }
 
     @Transactional
-    public Order createOrder(CreateOrderRequest request) {
+    public OrderResponse createOrder(CreateOrderRequest request) {
 
         BigDecimal total = calculateTotal(request.items());
 
@@ -53,6 +61,39 @@ public class OrderService {
             order.addItem(item);
         }
 
-        return orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
+        return orderMapper.toOrderResponse(savedOrder);
+    }
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderById(Long id) {
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        return orderMapper.toOrderResponse(order);
+    }
+    @Transactional
+    public OrderResponse updateOrderStatus(
+            Long id,
+            OrderStatus newStatus
+    ) {
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        OrderStatus currentStatus = order.getStatus();
+
+        if (newStatus == null
+                || currentStatus != OrderStatus.PENDING
+                || newStatus == OrderStatus.PENDING) {
+
+            throw new InvalidOrderStatusException(
+                    currentStatus, newStatus
+            );
+        }
+
+        order.setStatus(newStatus);
+
+        return orderMapper.toOrderResponse(order);
     }
 }
