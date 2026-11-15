@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import com.msdamine.orderservice.exception.InsufficientStockException;
 
 import org.junit.jupiter.api.Test;
 
@@ -37,6 +38,9 @@ import com.msdamine.orderservice.exception.OrderNotFoundException;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import com.msdamine.orderservice.exception.InvalidOrderStatusException;
+import com.msdamine.orderservice.exception.ProductNotFoundException;
+import com.msdamine.orderservice.exception.ProductServiceUnavailableException;
+import com.msdamine.orderservice.exception.DuplicateProductException;
 
 @WebMvcTest(OrderController.class)
 class OrderControllerTest {
@@ -110,11 +114,7 @@ class OrderControllerTest {
         CreateOrderRequest request = new CreateOrderRequest(
                 15L,
                 List.of(
-                        new OrderItemRequest(
-                                101L,
-                                2,
-                                new BigDecimal("199.99")
-                        )
+                        new OrderItemRequest(101L, 2)
                 )
         );
 
@@ -268,11 +268,7 @@ class OrderControllerTest {
         CreateOrderRequest request = new CreateOrderRequest(
                 15L,
                 List.of(
-                        new OrderItemRequest(
-                                101L,
-                                -3,
-                                new BigDecimal("199.99")
-                        )
+                        new OrderItemRequest(101L, -3)
                 )
         );
 
@@ -329,5 +325,121 @@ class OrderControllerTest {
                 ));
 
         verifyNoInteractions(orderService);
+    }
+    @Test
+    void shouldReturn409WhenStockIsInsufficient() throws Exception {
+
+        // Arrange
+        CreateOrderRequest request = new CreateOrderRequest(
+                15L,
+                List.of(new OrderItemRequest(2L, 15))
+        );
+
+        when(orderService.createOrder(any(CreateOrderRequest.class)))
+                .thenThrow(new InsufficientStockException(
+                        2L,
+                        15,
+                        10
+                ));
+
+        // Act & Assert
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value(
+                        "Insufficient stock for product 2: requested 15, available 10"
+                ))
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verify(orderService).createOrder(any(CreateOrderRequest.class));
+    }
+    @Test
+    void shouldReturn404WhenProductDoesNotExist() throws Exception {
+
+        // Arrange
+        CreateOrderRequest request = new CreateOrderRequest(
+                15L,
+                List.of(new OrderItemRequest(999L, 2))
+        );
+
+        when(orderService.createOrder(any(CreateOrderRequest.class)))
+                .thenThrow(new ProductNotFoundException(999L));
+
+        // Act & Assert
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value(
+                        "Product not found with id: 999"
+                ))
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verify(orderService).createOrder(any(CreateOrderRequest.class));
+    }
+    @Test
+    void shouldReturn503WhenProductServiceIsUnavailable() throws Exception {
+
+        // Arrange
+        CreateOrderRequest request = new CreateOrderRequest(
+                15L,
+                List.of(new OrderItemRequest(2L, 2))
+        );
+
+        ProductServiceUnavailableException exception =
+                new ProductServiceUnavailableException(
+                        new RuntimeException("Connection refused")
+                );
+
+        when(orderService.createOrder(any(CreateOrderRequest.class)))
+                .thenThrow(exception);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.error").value("Service Unavailable"))
+                .andExpect(jsonPath("$.message").value(
+                        "Product Service is temporarily unavailable"
+                ))
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verify(orderService).createOrder(any(CreateOrderRequest.class));
+    }
+    @Test
+    void shouldReturn400WhenOrderContainsDuplicateProducts() throws Exception {
+
+        // Arrange
+        CreateOrderRequest request = new CreateOrderRequest(
+                15L,
+                List.of(
+                        new OrderItemRequest(2L, 7),
+                        new OrderItemRequest(2L, 6)
+                )
+        );
+
+        when(orderService.createOrder(any(CreateOrderRequest.class)))
+                .thenThrow(new DuplicateProductException(2L));
+
+        // Act & Assert
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value(
+                        "Duplicate product in order: 2"
+                ))
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verify(orderService).createOrder(any(CreateOrderRequest.class));
     }
 }

@@ -12,56 +12,115 @@ import com.msdamine.orderservice.dto.OrderResponse;
 import com.msdamine.orderservice.exception.OrderNotFoundException;
 
 import java.math.BigDecimal;
-import java.util.List;import com.msdamine.orderservice.enums.OrderStatus;
+import java.util.List;
+import com.msdamine.orderservice.enums.OrderStatus;
 import com.msdamine.orderservice.exception.InvalidOrderStatusException;
+import com.msdamine.orderservice.exception.InsufficientStockException;
+
+import com.msdamine.orderservice.client.ProductClient;
+import com.msdamine.orderservice.dto.ProductResponse;
+import feign.FeignException;
+import com.msdamine.orderservice.exception.ProductNotFoundException;
+import com.msdamine.orderservice.exception.ProductServiceUnavailableException;
+import feign.RetryableException;
+import com.msdamine.orderservice.exception.DuplicateProductException;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 public class OrderService {
 
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
+    private final ProductClient productClient;
+
 
     public OrderService(
             OrderRepository orderRepository,
-            OrderMapper orderMapper
+            OrderMapper orderMapper,
+            ProductClient productClient
     ) {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
+        this.productClient = productClient;
     }
-    public BigDecimal calculateTotal(List<OrderItemRequest> items) {
 
-        BigDecimal total = BigDecimal.ZERO;
-
-        for (OrderItemRequest item : items) {
-
-            BigDecimal subtotal = item.unitPrice()
-                    .multiply(BigDecimal.valueOf(item.quantity()));
-
-            total = total.add(subtotal);
-        }
-
-        return total;
-    }
 
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest request) {
 
-        BigDecimal total = calculateTotal(request.items());
+        BigDecimal total = BigDecimal.ZERO;
+        Set<Long> productIds = new HashSet<>();
 
-        Order order = new Order(request.customerId(), total);
+        for (OrderItemRequest item : request.items()) {
+            if (!productIds.add(item.productId())) {
+                throw new DuplicateProductException(item.productId());
+            }
+        }
+
+        Order order = new Order(
+                request.customerId(),
+                BigDecimal.ZERO
+        );
 
         for (OrderItemRequest itemRequest : request.items()) {
 
+            // Retrieve product information from Product Service
+            ProductResponse product;
+
+            try {
+                product = productClient.getProductById(
+                        itemRequest.productId()
+                );
+
+            } catch (FeignException.NotFound exception) {
+
+                throw new ProductNotFoundException(
+                        itemRequest.productId()
+                );
+
+            } catch (RetryableException exception) {
+
+                throw new ProductServiceUnavailableException(exception);
+
+            } catch (FeignException exception) {
+
+                throw new ProductServiceUnavailableException(exception);
+            }
+            if (itemRequest.quantity() > product.stockQuantity()) {
+                throw new InsufficientStockException(
+                        itemRequest.productId(),
+                        itemRequest.quantity(),
+                        product.stockQuantity()
+                );
+            }
+
+            // Use the trusted product price
+            BigDecimal unitPrice = product.price();
+
+            // Calculate the item subtotal
+            BigDecimal subtotal = unitPrice.multiply(
+                    BigDecimal.valueOf(itemRequest.quantity())
+            );
+
+            total = total.add(subtotal);
+
+            // Create the order item using the trusted price
             OrderItem item = new OrderItem(
                     itemRequest.productId(),
                     itemRequest.quantity(),
-                    itemRequest.unitPrice()
+                    unitPrice
             );
 
             order.addItem(item);
         }
 
+        // Assign the final total
+        order.setTotalAmount(total);
+
+        // Persist the order and its items
         Order savedOrder = orderRepository.save(order);
+
         return orderMapper.toOrderResponse(savedOrder);
     }
     @Transactional(readOnly = true)
