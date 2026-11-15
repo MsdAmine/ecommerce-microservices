@@ -21,6 +21,12 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import com.msdamine.orderservice.client.ProductClient;
+import com.msdamine.orderservice.dto.ProductResponse;
+
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -36,27 +42,46 @@ class OrderCreationIntegrationTest {
     @Autowired
     private EntityManager entityManager;
 
+    @MockitoBean
+    private ProductClient productClient;
+
+
     @Test
     void shouldCreateOrderAndPersistItemsInDatabase() throws Exception {
 
-        // Arrange
+        // Arrange: simulate Product Service responses
+        when(productClient.getProductById(101L))
+                .thenReturn(new ProductResponse(
+                        101L,
+                        "Product A",
+                        new BigDecimal("199.99"),
+                        10
+                ));
+
+        when(productClient.getProductById(205L))
+                .thenReturn(new ProductResponse(
+                        205L,
+                        "Product B",
+                        new BigDecimal("49.99"),
+                        5
+                ));
+
+        // Client no longer sends unitPrice
         String requestJson = """
-                {
-                    "customerId": 15,
-                    "items": [
-                        {
-                            "productId": 101,
-                            "quantity": 2,
-                            "unitPrice": 199.99
-                        },
-                        {
-                            "productId": 205,
-                            "quantity": 1,
-                            "unitPrice": 49.99
-                        }
-                    ]
-                }
-                """;
+            {
+                "customerId": 15,
+                "items": [
+                    {
+                        "productId": 101,
+                        "quantity": 2
+                    },
+                    {
+                        "productId": 205,
+                        "quantity": 1
+                    }
+                ]
+            }
+            """;
 
         // Act: send HTTP POST request
         String responseBody = mockMvc.perform(post("/api/orders")
@@ -69,12 +94,14 @@ class OrderCreationIntegrationTest {
                 .andExpect(jsonPath("$.totalAmount").value(449.97))
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[0].productId").value(101))
+                .andExpect(jsonPath("$.items[0].unitPrice").value(199.99))
                 .andExpect(jsonPath("$.items[1].productId").value(205))
+                .andExpect(jsonPath("$.items[1].unitPrice").value(49.99))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        // Read generated order ID from response
+        // Extract generated order ID
         ObjectMapper objectMapper = new ObjectMapper();
 
         Long orderId = objectMapper
@@ -84,11 +111,11 @@ class OrderCreationIntegrationTest {
 
         assertTrue(orderId > 0);
 
-        // Force SQL synchronization and clear persistence context
+        // Synchronize database changes and clear persistence context
         entityManager.flush();
         entityManager.clear();
 
-        // Assert: reload order from PostgreSQL
+        // Assert: retrieve the persisted order from PostgreSQL
         Order persistedOrder = orderRepository.findById(orderId)
                 .orElseThrow();
 
@@ -103,6 +130,7 @@ class OrderCreationIntegrationTest {
 
         assertEquals(2, persistedOrder.getItems().size());
 
+        // Verify stored product IDs
         assertEquals(
                 101L,
                 persistedOrder.getItems().get(0).getProductId()
@@ -112,5 +140,21 @@ class OrderCreationIntegrationTest {
                 205L,
                 persistedOrder.getItems().get(1).getProductId()
         );
+
+        // Verify stored prices came from ProductClient
+        assertEquals(
+                0,
+                new BigDecimal("199.99").compareTo(
+                        persistedOrder.getItems().get(0).getUnitPrice()
+                )
+        );
+
+        assertEquals(
+                0,
+                new BigDecimal("49.99").compareTo(
+                        persistedOrder.getItems().get(1).getUnitPrice()
+                )
+        );
     }
+
 }

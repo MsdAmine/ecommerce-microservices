@@ -28,11 +28,7 @@ class CreateOrderRequestValidationTest {
 
         CreateOrderRequest request = new CreateOrderRequest(
                 15L,
-                List.of(new OrderItemRequest(
-                        101L,
-                        2,
-                        new BigDecimal("199.99")
-                ))
+                List.of(new OrderItemRequest(101L, 2))
         );
 
         var violations = validator.validate(request);
@@ -45,15 +41,10 @@ class CreateOrderRequestValidationTest {
 
         CreateOrderRequest request = new CreateOrderRequest(
                 null,
-                List.of(new OrderItemRequest(
-                        -1L,
-                        0,
-                        new BigDecimal("-100.00")
-                ))
+                List.of(new OrderItemRequest(-1L, 0))
         );
 
         var violations = validator.validate(request);
 
-        assertEquals(4, violations.size());
-    }
+        assertEquals(3, violations.size());    }
 }
